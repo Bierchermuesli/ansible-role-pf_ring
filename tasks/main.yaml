@@ -1,0 +1,99 @@
+---
+- name: Install OS Package version
+  ansible.builtin.package:
+    name:
+      - pfring
+      # - "pfring={{ pfring_version }}"
+    state: present
+  when: pfring_install_mode == 'apt'
+
+- name: Install necessary packages
+  ansible.builtin.package:
+    name:
+      - build-essential
+      - bison
+      - flex
+      - linux-headers-{{ ansible_kernel }}
+      - git
+    state: present
+  when: pfring_install_mode == 'source'
+
+- name: Git pull PF_RING
+  ansible.builtin.git:
+    repo: https://github.com/ntop/PF_RING.git
+    dest: /usr/src/pfring
+    version: "{{ pfring_version }}"
+  when: pfring_install_mode == 'source'
+
+- name: Make
+  ansible.builtin.command: make
+  args:
+    chdir: /usr/src/pfring/kernel
+    creates: /usr/src/pfring/kernel/pf_ring.ko
+  when: pfring_install_mode == 'source'
+
+- name: Make install
+  ansible.builtin.command: make install
+  args:
+    chdir: /usr/src/pfring/kernel
+    creates: /lib/modules/{{ ansible_kernel }}/kernel/net/pf_ring/pf_ring.ko
+  notify:
+    - Reload systemctl
+    - Started pfring
+  when: pfring_install_mode == 'source'
+
+- name: Install pf_ring scripts
+  ansible.builtin.copy:
+    src: /usr/src/pfring/package/usr/bin/{{ item }}
+    dest: /usr/bin/{{ item }}
+    mode: "0755"
+    remote_src: true
+  with_items:
+    # - pf_ringcfg
+    - pf_ringctl
+  when:
+    - pfring_install_mode == 'source'
+    - pfring_loader == 'systemd'
+
+- name: Create pf_ring.service
+  ansible.builtin.copy:
+    src: /usr/src/pfring/package/etc/systemd/system/pf_ring.service
+    dest: /etc/systemd/system/pf_ring.service
+    mode: "0644"
+    remote_src: true
+  when:
+    - pfring_install_mode == 'source'
+    - pfring_loader == 'systemd'
+
+- name: Reload systemctl
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    state: started
+    name: pf_ring
+    enabled: true
+  when:
+    - pfring_install_mode == 'source'
+    - pfring_loader == 'systemd'
+
+- name: Install the Kernel Module
+  community.general.modprobe:
+    name: pf_ring
+    state: present
+    params: "{{ pfring_module_params }}"
+    persistent: present
+  when:
+    - pfring_install_mode == 'source'
+    - pfring_loader == 'classic'
+
+- name: Check Module Version
+  ansible.builtin.shell: cat /proc/net/pf_ring/info | grep "PF_RING"
+  register: dmesg_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Assert correct PF_RING Version is loaded
+  ansible.builtin.assert:
+    that:
+      - '"{{ pfring_version }}" in dmesg_check.stdout'
+    fail_msg: "PF_RING not loaded\n {{ dmesg_check.stdout }}"
+    success_msg: PF_RING {{ pfring_version }} is loaded

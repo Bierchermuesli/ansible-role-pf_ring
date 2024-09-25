@@ -1,0 +1,9 @@
+---
+- name: Reload systemctl
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Started pfring
+  ansible.builtin.systemd_service:
+    state: started
+    name: pf_ring

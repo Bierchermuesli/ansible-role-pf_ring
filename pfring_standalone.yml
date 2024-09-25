@@ -1,0 +1,5 @@
+---
+- hosts: all
+  become: true
+  roles:
+    - { role: pfring, when: pfring_enabled|default(false)|bool }

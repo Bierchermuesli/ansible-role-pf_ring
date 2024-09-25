@@ -1,0 +1,8 @@
+---
+pfring_version: 8.4.0 # or latest or whatever
+
+pfring_module_params: "" # [min_num_slots=N] [enable_tx_capture=1|0] [ enable_ip_defrag=1|0]
+
+pfring_install_mode: source
+
+pfring_loader: classic
